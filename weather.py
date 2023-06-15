@@ -8,51 +8,134 @@ import json
 import pprint
 import requests
 
-
 LATITUDE = 32.7270
 LONGITUDE = -117.2058
 
-result = requests.get(
-    f"https://api.weather.gov/points/{LATITUDE},{LONGITUDE}", timeout=5
-)
-station = json.loads(result.text)
 
-grid = station["properties"]["gridId"]
-forecastURL = station["properties"]["forecast"]
-hourlyURL = station["properties"]["forecastHourly"]
-dataURL = station["properties"]["forecastGridData"]
-stationsURL = station["properties"]["observationStations"]
+def get_weather_station(lat, long):
+    """
+    get the urls for the weather station at the given
+    latitude and longitude.
+    """
+    result = requests.get(f"https://api.weather.gov/points/{lat},{long}", timeout=5)
+    station = json.loads(result.text)
+    grid = station["properties"]["gridId"]
+    forecast_url = station["properties"]["forecast"]
+    hourly_url = station["properties"]["forecastHourly"]
+    # the following are not used yet
+    # data_url = station["properties"]["forecastGridData"]
+    # stations_url = station["properties"]["observationStations"]
+    return grid, forecast_url + "?units=si", hourly_url + "?units=si"
 
-result = requests.get(forecastURL + "?units=si", timeout=5)
-forecast = json.loads(result.text)
-for p in forecast["properties"]["periods"]:
-    details = p["detailedForecast"]
-    name = p["name"]
-    rain = p["probabilityOfPrecipitation"]["value"]
-    if rain is None:
-        rain = ""
-    temp = p["temperature"]
-    wind = p["windDirection"]
-    speed = p["windSpeed"]
-    print(f"{name:15} {rain:4}{str(temp):2}C  {wind:4}{speed:15}  {details}")
 
-result = requests.get(hourlyURL + "?units=si", timeout=10)
-forecast = json.loads(result.text)
-for p in forecast["properties"]["periods"]:
-    details = p["shortForecast"]
-    date = datetime.fromisoformat(p["startTime"]).strftime("%a %H")
-    rain = p["probabilityOfPrecipitation"]["value"]
-    if rain is None:
-        rain = ""
-    temp = p["temperature"]
-    wind = p["windDirection"]
-    speed = p["windSpeed"]
-    print(f"{date:6} {rain:3}% {str(temp):2}C  {speed:8} {wind:4}{details}")
+def get_daily_forecast(url):
+    """return an array with the 7 day forecast"""
+    result = requests.get(url, timeout=10)
+    forecast = json.loads(result.text)
+    daily = []
+    for prop in forecast["properties"]["periods"]:
+        details = prop["detailedForecast"]
+        name = prop["name"]
+        rain = prop["probabilityOfPrecipitation"]["value"]
+        if rain is None:
+            rain = ""
+        temp = prop["temperature"]
+        wind = prop["windDirection"]
+        speed = prop["windSpeed"]
+        daily.append(
+            {
+                "name": name,
+                "forecast": details,
+                "temperature": temp,
+                "rain": rain,
+                "temp": temp,
+                "wind": wind,
+                "speed": speed,
+            }
+        )
+    return daily
 
-result = requests.get(dataURL, timeout=5)
-forecast = json.loads(result.text)
-pprint.pprint(forecast)
 
-result = requests.get(stationsURL, timeout=5)
-forecast = json.loads(result.text)
-pprint.pprint(forecast)
+def get_hourly_forecast(url):
+    """return array of forecast for 7 days each hour"""
+    result = requests.get(url, timeout=10)
+    forecast = json.loads(result.text)
+    daily = []
+    for prop in forecast["properties"]["periods"]:
+        details = prop["shortForecast"]
+        date = datetime.fromisoformat(prop["startTime"]).strftime("%a %H %H:%M")
+        rain = prop["probabilityOfPrecipitation"]["value"]
+        if rain is None:
+            rain = ""
+        temp = prop["temperature"]
+        wind = prop["windDirection"]
+        speed = prop["windSpeed"]
+        daily.append(
+            {
+                "date": date,
+                "forecast": details,
+                "temperature": temp,
+                "rain": rain,
+                "temp": temp,
+                "wind": wind,
+                "speed": speed,
+            }
+        )
+    return daily
+
+def bad_forecast(forecast):
+    """ return true if the forecast is bad for sailing """
+    description = forecast["forecast"].lower()
+    wind = int(forecast["speed"].split()[0])
+    temp = int(forecast["temp"])
+    rain = int(forecast["rain"])
+    if "fog" in description or "rain" in description:
+        return True
+    if wind < 15:
+       return True
+    if temp < 16 or temp > 35:
+       return True
+    if rain > 30:
+       return True
+
+    return False
+
+def is_boundary(hour):
+    if hour == "09:00" or hour == "12:00" or hour == "16:00":
+        return True
+    return False
+
+def get_predictions(hourly):
+    """return an array with predictions for blocks of daylight sailing"""
+    predictions = []
+    index = 0
+    while index < len(hourly):
+        hour = hourly[index]
+        time = hour["date"].split()[2]
+        if is_boundary(time):
+            pred = "good"
+            for index2 in range(4):
+                if bad_forecast(hourly[index+index2]):
+                        pred = "bad"
+            predictions.append((pred,
+                                hour["date"],
+                                hour["temperature"],
+                                hour["rain"],
+                                hour["wind"],
+                                hour["speed"],
+                                hour["forecast"],
+                                ))
+        index += 1
+    return predictions
+
+
+def main():
+    """main sequence"""
+    _, _, hourly_url = get_weather_station(LATITUDE, LONGITUDE)
+    hourly = get_hourly_forecast(hourly_url)
+    sailing_prediction = get_predictions(hourly)
+    pprint.pprint(sailing_prediction)
+
+
+if __name__ == "__main__":
+    main()
