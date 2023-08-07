@@ -8,8 +8,13 @@ import json
 import pprint
 import requests
 
+# San Diego Bay
 LATITUDE = 32.7270
 LONGITUDE = -117.2058
+
+# New Orleans French Quarter
+LATITUDE = 29.95
+LONGITUDE = -90.06
 
 
 def get_weather_station(lat, long):
@@ -25,7 +30,8 @@ def get_weather_station(lat, long):
     # the following are not used yet
     # data_url = station["properties"]["forecastGridData"]
     # stations_url = station["properties"]["observationStations"]
-    return grid, forecast_url + "?units=si", hourly_url + "?units=si"
+#return grid, forecast_url + "?units=si", hourly_url + "?units=si"
+    return grid, forecast_url, hourly_url 
 
 
 def get_daily_forecast(url):
@@ -65,6 +71,7 @@ def get_hourly_forecast(url):
         details = prop["shortForecast"]
         date = datetime.fromisoformat(prop["startTime"]).strftime("%a %H %H:%M")
         rain = prop["probabilityOfPrecipitation"]["value"]
+        humidity = prop["relativeHumidity"]["value"]
         if rain is None:
             rain = ""
         temp = prop["temperature"]
@@ -75,6 +82,7 @@ def get_hourly_forecast(url):
                 "date": date,
                 "forecast": details,
                 "temperature": temp,
+                "humidity": humidity,
                 "rain": rain,
                 "temp": temp,
                 "wind": wind,
@@ -128,13 +136,21 @@ def get_predictions(hourly):
         index += 1
     return predictions
 
+def print_table(hourly):
+    print(f"{'    date':12} {'temp':4} {'hum':4} {'rain':4} {'forecast':20}");
+    if (hourly):
+        for hour in hourly:
+            print(f"{hour['date']:12} {hour['temp']:4} {hour['humidity']:4} {hour['rain']:4} {hour['forecast']:20} ")
+
 
 def main():
     """main sequence"""
     _, _, hourly_url = get_weather_station(LATITUDE, LONGITUDE)
     hourly = get_hourly_forecast(hourly_url)
-    sailing_prediction = get_predictions(hourly)
-    pprint.pprint(sailing_prediction)
+    print_table(hourly)
+#   pprint.pprint(hourly)
+#   sailing_prediction = get_predictions(hourly)
+#   pprint.pprint(sailing_prediction)
 
 
 if __name__ == "__main__":
